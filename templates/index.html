@@ -342,12 +342,22 @@
         $('#compareAllBtn').click(function () {
             const seasonStart = $('#seasonStart').val();
             const gaParams = {
-                population_size: parseInt($('#gaPopulationSize').val() || 20),
-                generations: parseInt($('#gaGenerations').val() || 30),
+                population_size: parseInt($('#gaPopulationSize').val() || 12),
+                generations: parseInt($('#gaGenerations').val() || 15),
                 mutation_rate: parseFloat($('#gaMutationRate').val() || 0.25)
             };
 
-            $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Benchmarking Round Robin, Genetic Algorithm, CSP, and Hybrid...').show();
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Running Benchmark...');
+            $('#comparisonTableWrap').html(`
+                <div class="loading" style="padding: 25px;">
+                    <i class="fas fa-spinner fa-spin"></i> Running Round Robin, Genetic Algorithm, CSP, and Hybrid... Please wait (~3-5 seconds)...
+                </div>
+            `);
+            $('#comparisonCard').slideDown(200);
+            $('html, body').animate({
+                scrollTop: $("#comparisonCard").offset().top - 20
+            }, 400);
 
             $.ajax({
                 url: "/compare_algorithms",
@@ -359,20 +369,23 @@
                     ga_params: gaParams
                 }),
                 success: function (res) {
-                    $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Optimizing 380 matches across 38 rounds...').hide();
+                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 4 Algorithms');
                     if (!res || !res.results) {
-                        alert("Failed to run algorithm comparison.");
+                        $('#comparisonTableWrap').html('<div class="error">Failed to run algorithm comparison.</div>');
                         return;
                     }
                     renderComparisonTable(res.results);
-                    $('#comparisonCard').slideDown(250);
-                    $('html, body').animate({
-                        scrollTop: $("#comparisonCard").offset().top - 20
-                    }, 500);
                 },
                 error: function (xhr) {
-                    $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Optimizing 380 matches across 38 rounds...').hide();
-                    alert("Benchmark error! Status: " + xhr.status);
+                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 4 Algorithms');
+                    $('#comparisonTableWrap').html(`
+                        <div class="error">
+                            <strong>Benchmark Error (HTTP ${xhr.status}):</strong>
+                            ${xhr.status === 404
+                                ? 'Route /compare_algorithms not found. Please restart your Flask server (Ctrl+C and run <code>python app.py</code> again)!'
+                                : (xhr.responseText || 'Server connection failed.')}
+                        </div>
+                    `);
                 }
             });
         });

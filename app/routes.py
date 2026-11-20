@@ -392,9 +392,11 @@ def compare_algorithms_route():
 
         if "ga_params" in data and isinstance(data["ga_params"], dict):
             gp = data["ga_params"]
+            # Giới hạn population_size và generations ở mức tối ưu cho chế độ Benchmark 4 thuật toán
+            # để tổng thời gian so sánh cả 4 thuật toán chỉ mất khoảng 3-5 giây thay vì 30-45 giây
             runtime_constraints["ga_params"] = {
-                "population_size": max(4, int(gp.get("population_size", 20))),
-                "generations": max(1, int(gp.get("generations", 30))),
+                "population_size": min(16, max(4, int(gp.get("population_size", 12)))),
+                "generations": min(20, max(1, int(gp.get("generations", 15)))),
                 "mutation_rate": min(1.0, max(0.0, float(gp.get("mutation_rate", 0.25))))
             }
 
