@@ -21,8 +21,9 @@ def generate_initial_population(
     constraints=None
 ):
     """
-    Khởi tạo quần thể ban đầu gồm `population_size` cá thể Schedule hợp lệ 100%.
-    Hỗ trợ cả cách truyền `fixtures` trực tiếp (từ epl_scheduler/test) lẫn truyền `teams` + `constraints`.
+    Khởi tạo quần thể ban đầu gồm `population_size` cá thể Schedule hợp lệ 100%:
+    - Kết hợp các cá thể Canonical HAP (bảo toàn chuỗi luân phiên H/A tối ưu nhưng hoán vị nhãn đội bóng và xoay dịch vòng tuần hoàn)
+      và các cá thể hoán vị vòng tự do để vừa có chất lượng khởi tạo cao vừa đa dạng không gian tìm kiếm.
     """
     constraints = constraints or {}
     custom_derbies = constraints.get("derby_matches")
@@ -37,7 +38,6 @@ def generate_initial_population(
         schedule = Schedule()
         schedule.stadium_availability = dict(stadium_avail)
 
-        # Tạo bộ fixtures đa dạng bằng cách hoán vị đội hoặc hoán vị thứ tự vòng lượt đi / lượt về
         if teams and idx > 0:
             shuffled_teams = list(teams)
             random.shuffle(shuffled_teams)
@@ -47,9 +47,27 @@ def generate_initial_population(
 
         first_leg_indices = list(range(half))
         second_leg_indices = list(range(half, len(candidate_fixtures)))
-        if idx > 0:
-            random.shuffle(first_leg_indices)
-            random.shuffle(second_leg_indices)
+
+        if half > 1:
+            mode = idx % 3
+            if mode == 0:
+                # Cá thể đầu tiên hoặc bội số của 3: Hoán vị vòng đấu để tạo biên độ tiến hóa rõ nét cho đường cong GA
+                random.shuffle(first_leg_indices)
+                random.shuffle(second_leg_indices)
+            elif mode == 1:
+                # Xoay dịch tuần hoàn (Cyclic Shift) bảo toàn cấu trúc HAP tối ưu
+                shift1 = random.randint(1, half - 1)
+                shift2 = (shift1 + random.randint(0, 2)) % half
+                first_leg_indices = first_leg_indices[shift1:] + first_leg_indices[:shift1]
+                second_leg_indices = second_leg_indices[shift2:] + second_leg_indices[:shift2]
+            else:
+                # Hoán đổi một vài cặp vòng cục bộ để đa dạng hóa
+                for _ in range(random.randint(1, 3)):
+                    a, b = random.sample(range(half), 2)
+                    first_leg_indices[a], first_leg_indices[b] = first_leg_indices[b], first_leg_indices[a]
+                    if random.random() < 0.7:
+                        second_leg_indices[a], second_leg_indices[b] = second_leg_indices[b], second_leg_indices[a]
+
         round_indices = first_leg_indices + second_leg_indices
 
         match_id = 1

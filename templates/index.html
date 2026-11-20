@@ -13,7 +13,7 @@
 <div class="container">
     <header class="header">
         <h1><i class="fas fa-futbol"></i> Premier League Schedule Optimizer</h1>
-        <p class="subtitle">Round Robin • Genetic Algorithm • CSP • Hybrid</p>
+        <p class="subtitle">Round Robin • Memetic GA • Backtracking CSP • Hybrid • SOTA Simulated Annealing</p>
     </header>
 
     <div class="content">
@@ -47,10 +47,11 @@
                 <div class="form-group">
                     <label for="algorithm"><i class="fas fa-microchip"></i> Select Algorithm</label>
                     <select id="algorithm" class="form-control">
-                        <option value="round_robin">Round Robin (Basic Berger Table)</option>
-                        <option value="genetic">Genetic Algorithm (GA Optimizer)</option>
-                        <option value="csp">Constraint Satisfaction (CSP Solver)</option>
-                        <option value="hybrid" selected>Hybrid (Round Robin + GA + CSP)</option>
+                        <option value="round_robin">Round Robin (Canonical Berger Table)</option>
+                        <option value="genetic">Memetic Genetic Algorithm (GA + Local Search)</option>
+                        <option value="csp">Constraint Satisfaction (Backtracking CSP)</option>
+                        <option value="hybrid" selected>Hybrid (Round Robin + Memetic GA + CSP)</option>
+                        <option value="sota_sa">SOTA 3-Phase (Canonical HAP + Simulated Annealing + CSP)</option>
                     </select>
                 </div>
 
@@ -89,7 +90,7 @@
                 </button>
 
                 <button id="compareAllBtn" class="btn btn-secondary" type="button">
-                    <i class="fas fa-balance-scale"></i> Compare All 4 Algorithms
+                    <i class="fas fa-balance-scale"></i> Compare All 5 Algorithms
                 </button>
 
                 <a href="/constraints" class="btn btn-secondary">
@@ -113,12 +114,12 @@
         <!-- ALGORITHM BENCHMARK COMPARISON CARD -->
         <div id="comparisonCard" class="card" style="display:none;">
             <div class="results-header">
-                <h2><i class="fas fa-trophy"></i> 4-Algorithm Benchmark Comparison</h2>
+                <h2><i class="fas fa-trophy"></i> 5-Algorithm Benchmark Comparison</h2>
                 <button type="button" id="closeComparisonBtn" class="btn btn-secondary btn-small">
                     <i class="fas fa-times"></i> Hide Comparison
                 </button>
             </div>
-            <p style="margin-bottom: 12px; color: #555;">Direct benchmark of all 4 scheduling engines under current constraints and GA parameters:</p>
+            <p style="margin-bottom: 12px; color: #555;">Direct benchmark of all 5 scheduling engines (including SOTA 3-Phase Simulated Annealing) under current constraints:</p>
             <div id="comparisonTableWrap" class="balance-table"></div>
         </div>
 
@@ -269,7 +270,7 @@
     $(document).ready(function () {
         function toggleGAPanel() {
             const alg = $('#algorithm').val();
-            if (alg === 'genetic' || alg === 'hybrid') {
+            if (alg === 'genetic' || alg === 'hybrid' || alg === 'sota_sa') {
                 $('#gaParamsPanel').slideDown(150);
             } else {
                 $('#gaParamsPanel').slideUp(150);
@@ -369,7 +370,7 @@
                     ga_params: gaParams
                 }),
                 success: function (res) {
-                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 4 Algorithms');
+                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 5 Algorithms');
                     if (!res || !res.results) {
                         $('#comparisonTableWrap').html('<div class="error">Failed to run algorithm comparison.</div>');
                         return;
@@ -377,7 +378,7 @@
                     renderComparisonTable(res.results);
                 },
                 error: function (xhr) {
-                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 4 Algorithms');
+                    $btn.prop('disabled', false).html('<i class="fas fa-balance-scale"></i> Compare All 5 Algorithms');
                     $('#comparisonTableWrap').html(`
                         <div class="error">
                             <strong>Benchmark Error (HTTP ${xhr.status}):</strong>
@@ -525,10 +526,11 @@
 
     function renderQualityBanner(res) {
         const algLabels = {
-            round_robin: 'Round Robin (Berger Table)',
-            genetic: 'Genetic Algorithm (GA)',
-            csp: 'Constraint Satisfaction (CSP)',
-            hybrid: 'Hybrid Pipeline (RR + GA + CSP)'
+            round_robin: 'Round Robin (Canonical Berger)',
+            genetic: 'Memetic Genetic Algorithm (GA)',
+            csp: 'Constraint Satisfaction (Backtracking CSP)',
+            hybrid: 'Hybrid Pipeline (RR + Memetic GA + CSP)',
+            sota_sa: 'SOTA 3-Phase (Canonical HAP + Simulated Annealing + CSP)'
         };
         const algName = algLabels[res.algorithm_used] || res.algorithm_used;
         const execTime = res.execution_time_ms !== undefined ? `${res.execution_time_ms} ms` : '-';
@@ -540,6 +542,11 @@
         const totalPenalty = sd.total_penalty !== undefined ? sd.total_penalty : '-';
         const cityClashes = sd.city_clash_count !== undefined ? sd.city_clash_count : 0;
         const minGap = sd.min_leg_gap !== undefined ? `${sd.min_leg_gap} rounds` : '-';
+        const streakPen = sd.streak_penalty !== undefined ? sd.streak_penalty : 0;
+        const sepPen = sd.repeat_separation_penalty !== undefined ? sd.repeat_separation_penalty : 0;
+        const clashPen = sd.city_clash_penalty !== undefined ? sd.city_clash_penalty : 0;
+        const derbyPen = sd.derby_penalty !== undefined ? sd.derby_penalty : 0;
+        const balPen = sd.balance_penalty !== undefined ? sd.balance_penalty : 0;
 
         $('#qualityBanner').html(`
             <div class="q-item">
@@ -565,6 +572,16 @@
             <div class="q-item">
                 <span class="q-label"><i class="fas fa-arrows-alt-h"></i> Min 1st/2nd Leg Gap</span>
                 <span class="q-val">${minGap}</span>
+            </div>
+            <div class="q-item" style="grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+                <span class="q-label" style="margin: 0;"><i class="fas fa-chart-pie"></i> Soft Penalty Breakdown:</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.85rem;">
+                    <span><strong>H/A Streaks:</strong> ${streakPen}</span>
+                    <span><strong>Leg Gap (&lt;8):</strong> ${sepPen}</span>
+                    <span><strong>City Clashes:</strong> ${clashPen}</span>
+                    <span><strong>Derby Slot/Density:</strong> ${derbyPen}</span>
+                    <span><strong>Balance &amp; TV/Club Reqs:</strong> ${balPen}</span>
+                </div>
             </div>
         `);
     }

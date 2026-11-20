@@ -150,6 +150,37 @@
                            class="form-control">
                 </div>
             </div>
+
+            <!-- CLUB ROUND REQUESTS (team_requests) -->
+            <div class="card">
+                <h2><i class="fas fa-clipboard-check"></i> Club Round Home/Away Requests</h2>
+                <p>Specify special club requests to play Home (H) or Away (A) in a specific Matchweek (e.g., Opening Round 1 or Final Round 38):</p>
+
+                <div id="teamRequestsList" style="margin-top: 15px;">
+                    {% for club_name, req_map in (constraints.get('team_requests') or {}).items() %}
+                        {% for r_str, pref in req_map.items() %}
+                        <div class="constraint-item team-req-row-item">
+                            <select class="form-control req-club-name">
+                                {% for club in clubs %}
+                                <option value="{{ club }}" {% if club == club_name %}selected{% endif %}>{{ club }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="to-text">Matchweek</span>
+                            <input type="number" min="1" max="38" value="{{ r_str }}" class="form-control req-round-num" style="max-width: 110px;">
+                            <select class="form-control req-ha-pref" style="max-width: 170px;">
+                                <option value="H" {% if pref == 'H' %}selected{% endif %}>Home (Sân nhà)</option>
+                                <option value="A" {% if pref == 'A' %}selected{% endif %}>Away (Sân khách)</option>
+                            </select>
+                            <button type="button" class="btn btn-small btn-remove"><i class="fas fa-times"></i></button>
+                        </div>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="addTeamReqBtn" class="btn btn-secondary">
+                    <i class="fas fa-plus"></i> Add Club Round Request
+                </button>
+            </div>
             
             <div class="button-group">
                 <button type="button" id="saveConstraintsBtn" class="btn btn-primary">
@@ -226,6 +257,26 @@
                     </div>`;
                 $('#stadiumConstraints').append(stadiumHtml);
             });
+
+            // Add new club round request
+            $('#addTeamReqBtn').click(function() {
+                const reqHtml = `
+                    <div class="constraint-item team-req-row-item">
+                        <select class="form-control req-club-name">
+                            {% for club in clubs %}
+                            <option value="{{ club }}">{{ club }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="to-text">Matchweek</span>
+                        <input type="number" min="1" max="38" value="1" class="form-control req-round-num" style="max-width: 110px;">
+                        <select class="form-control req-ha-pref" style="max-width: 170px;">
+                            <option value="A">Away (Sân khách)</option>
+                            <option value="H">Home (Sân nhà)</option>
+                        </select>
+                        <button type="button" class="btn btn-small btn-remove"><i class="fas fa-times"></i></button>
+                    </div>`;
+                $('#teamRequestsList').append(reqHtml);
+            });
             
             // Remove constraint item
             $(document).on('click', '.btn-remove', function() {
@@ -257,6 +308,17 @@
                     }
                 });
 
+                const teamRequests = {};
+                $('.team-req-row-item').each(function() {
+                    const club = $(this).find('.req-club-name').val();
+                    const rNum = $(this).find('.req-round-num').val();
+                    const pref = $(this).find('.req-ha-pref').val();
+                    if (club && rNum && pref) {
+                        if (!teamRequests[club]) teamRequests[club] = {};
+                        teamRequests[club][String(rNum)] = pref;
+                    }
+                });
+
                 const payload = {
                     season_start: $('#seasonStart').val() || '2024-08-17',
                     ga_params: {
@@ -266,6 +328,7 @@
                     },
                     derby_matches: derbyMatches,
                     stadium_availability: stadiumAvail,
+                    team_requests: teamRequests,
                     tv_broadcast: {
                         prime_time_matches: parseInt($('#primeTimeMatches').val() || 38),
                         weekend_matches_min: parseInt($('#weekendMatches').val() || 7)

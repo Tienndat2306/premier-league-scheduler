@@ -320,10 +320,10 @@ def generate_schedule_route():
             }
             current_constraints["ga_params"] = copy.deepcopy(runtime_constraints["ga_params"])
 
-        if algorithm not in ("round_robin", "genetic", "csp", "hybrid"):
+        if algorithm not in ("round_robin", "genetic", "csp", "hybrid", "sota_sa"):
             return jsonify({
                 "error": f'Algorithm "{algorithm}" not supported',
-                "supported_algorithms": ["round_robin", "genetic", "csp", "hybrid"]
+                "supported_algorithms": ["round_robin", "genetic", "csp", "hybrid", "sota_sa"]
             }), 400
 
         schedule_obj, schedule = generate_schedule_by_algorithm(
@@ -401,14 +401,15 @@ def compare_algorithms_route():
             }
 
         alg_names = {
-            "round_robin": "Round Robin (Berger Table)",
-            "genetic": "Genetic Algorithm (GA)",
-            "csp": "Constraint Satisfaction (CSP)",
-            "hybrid": "Hybrid (RR + GA + CSP)"
+            "round_robin": "Round Robin (Canonical Berger)",
+            "genetic": "Memetic Genetic Algorithm (GA)",
+            "csp": "Constraint Satisfaction (Backtracking CSP)",
+            "hybrid": "Hybrid (RR + Memetic GA + CSP)",
+            "sota_sa": "SOTA 3-Phase (HAP + Simulated Annealing + CSP)"
         }
 
         comparison_results = []
-        for alg in ("round_robin", "genetic", "csp", "hybrid"):
+        for alg in ("round_robin", "genetic", "csp", "hybrid", "sota_sa"):
             sched_obj, match_dicts = generate_schedule_by_algorithm(
                 algorithm=alg,
                 clubs=clubs,

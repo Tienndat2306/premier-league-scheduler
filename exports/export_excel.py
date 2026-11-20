@@ -109,16 +109,50 @@ def _build_club_summary_rows(match_rows):
     return summary_rows
 
 
+def _build_ha_matrix_rows(match_rows):
+    """Xây dựng bảng Ma trận 38 vòng Sân nhà (H) / Sân khách (A) cho Sheet 3"""
+    by_club = {}
+    for row in sorted(match_rows, key=lambda r: (r.get("Round") or 0, r.get("Date") or "")):
+        r_num = row.get("Round")
+        home = row.get("Home Team")
+        away = row.get("Away Team")
+        if home and r_num:
+            by_club.setdefault(home, {})[r_num] = "H"
+        if away and r_num:
+            by_club.setdefault(away, {})[r_num] = "A"
+
+    matrix_rows = []
+    for club in sorted(by_club.keys()):
+        r_map = by_club[club]
+        item = {"Club": club}
+        for r in range(1, 39):
+            item[f"R{r}"] = r_map.get(r, "-")
+        item["R1/R38 Alt"] = "Yes" if (r_map.get(1) and r_map.get(38) and r_map.get(1) != r_map.get(38)) else "No"
+        matrix_rows.append(item)
+    return matrix_rows
+
+
 def _style_workbook(writer):
-    """Định dạng tiêu đề màu tím đặc trưng EPL và tự động căn chỉnh độ rộng các cột"""
+    """Định dạng tiêu đề màu tím đặc trưng EPL, tô màu H/A trên Sheet 3 và tự động căn chỉnh độ rộng các cột"""
     header_fill = PatternFill(start_color="37003C", end_color="37003C", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
+    home_fill = PatternFill(start_color="F3E5F5", end_color="F3E5F5", fill_type="solid")
+    away_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
 
     for sheet_name, ws in writer.sheets.items():
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        if sheet_name == "38-Round H-A Matrix":
+            for row in ws.iter_rows(min_row=2):
+                for cell in row[1:]:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    if cell.value == "H":
+                        cell.fill = home_fill
+                    elif cell.value == "A":
+                        cell.fill = away_fill
 
         for col in ws.columns:
             max_len = 0
@@ -127,34 +161,41 @@ def _style_workbook(writer):
                 val_str = str(cell.value or "")
                 if len(val_str) > max_len:
                     max_len = len(val_str)
-            ws.column_dimensions[col_letter].width = max(12, min(max_len + 4, 38))
+            min_w = 5 if (sheet_name == "38-Round H-A Matrix" and col_letter != "A") else 12
+            ws.column_dimensions[col_letter].width = max(min_w, min(max_len + 3, 38))
 
 
 def export_to_excel(schedule, filename="epl_schedule.xlsx"):
-    """Xuất lịch thi đấu ra file Excel gồm 2 sheets trên ổ đĩa"""
+    """Xuất lịch thi đấu ra file Excel gồm 3 sheets trên ổ đĩa"""
     rows = _normalize_matches(schedule)
     summary_rows = _build_club_summary_rows(rows)
+    matrix_rows = _build_ha_matrix_rows(rows)
     df_matches = pd.DataFrame(rows)
     df_summary = pd.DataFrame(summary_rows)
+    df_matrix = pd.DataFrame(matrix_rows)
 
     with pd.ExcelWriter(filename, engine="openpyxl") as writer:
         df_matches.to_excel(writer, index=False, sheet_name="EPL Schedule")
         df_summary.to_excel(writer, index=False, sheet_name="Club Summary & Balance")
+        df_matrix.to_excel(writer, index=False, sheet_name="38-Round H-A Matrix")
         _style_workbook(writer)
     return filename
 
 
 def export_to_excel_bytes(schedule) -> io.BytesIO:
-    """Xuất lịch thi đấu ra bộ nhớ đệm BytesIO (2 sheets định dạng đẹp) để trả trực tiếp qua HTTP download"""
+    """Xuất lịch thi đấu ra bộ nhớ đệm BytesIO (3 sheets định dạng đẹp) để trả trực tiếp qua HTTP download"""
     rows = _normalize_matches(schedule)
     summary_rows = _build_club_summary_rows(rows)
+    matrix_rows = _build_ha_matrix_rows(rows)
     df_matches = pd.DataFrame(rows)
     df_summary = pd.DataFrame(summary_rows)
+    df_matrix = pd.DataFrame(matrix_rows)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df_matches.to_excel(writer, index=False, sheet_name="EPL Schedule")
         df_summary.to_excel(writer, index=False, sheet_name="Club Summary & Balance")
+        df_matrix.to_excel(writer, index=False, sheet_name="38-Round H-A Matrix")
         _style_workbook(writer)
     output.seek(0)
     return output

@@ -8,8 +8,8 @@ from utils.date_utils import get_match_dates, get_season_end, assign_slot_for_ma
 
 def generate_round_robin(teams: List[Team], custom_derbies=None) -> List[List[Match]]:
     """
-    Tạo danh sách 38 vòng đấu (mỗi vòng 10 đối tượng Match) theo thuật toán Berger Table
-    đảm bảo cân bằng luân phiên Sân nhà / Sân khách.
+    Tạo danh sách 38 vòng đấu (mỗi vòng 10 đối tượng Match) theo thuật toán Canonical Berger Table (1-Factorization)
+    đảm bảo cân bằng luân phiên Sân nhà / Sân khách với số lần break tối thiểu lý thuyết (N - 2 = 18 breaks/lượt).
     """
     team_list = list(teams)
     n = len(team_list)
@@ -41,9 +41,11 @@ def generate_round_robin(teams: List[Team], custom_derbies=None) -> List[List[Ma
 
             if t1 is not None and t2 is not None:
                 if i == 0:
+                    # Đội cố định luân phiên H/A mỗi vòng
                     home, away = (t1, t2) if (r_idx % 2 == 0) else (t2, t1)
                 else:
-                    home, away = (t1, t2) if ((r_idx + i) % 2 == 0) else (t2, t1)
+                    # Quy chuẩn Canonical 1-Factorization: vị trí i lẻ và chẵn đảo chiều nhau
+                    home, away = (t1, t2) if (i % 2 == 1) else (t2, t1)
 
                 round_matches.append(
                     Match(
@@ -59,9 +61,10 @@ def generate_round_robin(teams: List[Team], custom_derbies=None) -> List[List[Ma
         first_leg.append(round_matches)
         rotating_teams = [rotating_teams[-1]] + rotating_teams[:-1]
 
-    # -------- LƯỢT VỀ (19 VÒNG) --------
+    # -------- LƯỢT VỀ (19 VÒNG - Mirrored Order) --------
     second_leg = []
-    for round_matches in first_leg:
+    for r_idx, round_matches in enumerate(first_leg):
+        rev_round_num = rounds + r_idx + 1
         rev_round = []
         for m in round_matches:
             rev_round.append(
@@ -69,7 +72,7 @@ def generate_round_robin(teams: List[Team], custom_derbies=None) -> List[List[Ma
                     match_id=match_id,
                     home_team=m.away_team,
                     away_team=m.home_team,
-                    round_num=m.round_num + rounds,
+                    round_num=rev_round_num,
                     custom_derbies=custom_derbies
                 )
             )

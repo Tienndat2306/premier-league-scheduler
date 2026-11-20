@@ -11,6 +11,7 @@ from generators.round_robin import RoundRobinScheduler
 from ga.ga_engine import GAScheduler
 from csp.csp_solver import CSPScheduler
 from csp.hybrid import HybridScheduler
+from csp.sota_sa import SimulatedAnnealingScheduler
 from constraints.soft import evaluate_soft_details
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -125,11 +126,12 @@ def generate_schedule_by_algorithm(
     constraints: dict = None
 ) -> Tuple[Schedule, List[dict]]:
     """
-    Điểm điều phối trung tâm (Service Layer) cho cả 4 thuật toán:
-    - `round_robin`: RoundRobinScheduler
-    - `genetic`: GAScheduler (modular `ga/` package)
-    - `csp`: CSPScheduler (`csp/csp_solver.py`)
-    - `hybrid`: HybridScheduler (`csp/hybrid.py` = RR + GA + CSP)
+    Điểm điều phối trung tâm (Service Layer) cho cả 5 thuật toán:
+    - `round_robin`: RoundRobinScheduler (Canonical Berger 1-Factorization)
+    - `genetic`: GAScheduler (Memetic GA + Order/Polarity Crossover + TeamSwap)
+    - `csp`: CSPScheduler (Backtracking MRV + Forward Checking)
+    - `hybrid`: HybridScheduler (`csp/hybrid.py` = RR + Memetic GA + CSP)
+    - `sota_sa`: SimulatedAnnealingScheduler (SOTA 3-Phase HAP + Simulated Annealing + Kempe/TeamSwap + CSP)
     Trả về cả đối tượng OOP `Schedule` và danh sách `List[dict]` đã serialize.
     """
     t0 = time.perf_counter()
@@ -149,6 +151,9 @@ def generate_schedule_by_algorithm(
     elif algorithm == "hybrid":
         scheduler = HybridScheduler(team_objs, constraints)
         schedule_obj = scheduler.generate_hybrid_schedule_object()
+    elif algorithm in ("sota_sa", "simulated_annealing", "sota"):
+        scheduler = SimulatedAnnealingScheduler(team_objs, constraints)
+        schedule_obj = scheduler.optimize_schedule_object()
     else:
         raise ValueError(f'Algorithm "{algorithm}" not supported')
 

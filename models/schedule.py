@@ -19,6 +19,7 @@ class Schedule:
         self.execution_time_ms: float = 0.0
         self.final_penalty: float = 0.0
         self.stadium_availability: dict = {}
+        self.team_requests: dict = {}
 
     @property
     def total_rounds(self) -> int:
@@ -32,6 +33,7 @@ class Schedule:
         new_schedule.season_start = self.season_start
         new_schedule.season_end = self.season_end
         new_schedule.stadium_availability = dict(self.stadium_availability)
+        new_schedule.team_requests = dict(self.team_requests)
         return new_schedule
 
     def copy(self):
@@ -45,6 +47,7 @@ class Schedule:
         new_schedule.execution_time_ms = self.execution_time_ms
         new_schedule.final_penalty = self.final_penalty
         new_schedule.stadium_availability = dict(self.stadium_availability)
+        new_schedule.team_requests = dict(self.team_requests)
         return new_schedule
 
     def add_match(self, match: Match):

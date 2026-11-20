@@ -25,11 +25,12 @@ An intelligent, multi-objective tournament scheduling and optimization system fo
 
 ## Features
 
-- **4 Modular Scheduling & Optimization Engines**:
-  - **Round Robin (`RoundRobinScheduler`)**: Constructs a balanced 38-round double round-robin baseline schedule using the Berger Table rotation algorithm.
-  - **Genetic Algorithm (`GAScheduler`)**: Evolves schedules using *Tournament Selection*, structure-preserving *Order Crossover (OX)*, *Symmetric Mutation* (round swaps, first/second-leg home-away inversions, and kickoff slot shifts), and *Multi-stage Repair*.
-  - **Constraint Satisfaction (`CSPScheduler`)**: Enforces stadium availability windows, separates same-city rival home games (*Police / City Clash Rule*), and schedules local derbies on weekends and prime-time broadcast slots.
-  - **Hybrid Pipeline (`HybridScheduler`)**: Combines `Round Robin -> Genetic Algorithm -> CSP Solver` sequentially to achieve minimal soft constraint penalties alongside strict broadcast and urban security compliance.
+- **5 Modular Scheduling & Optimization Engines**:
+  - **Round Robin (`RoundRobinScheduler`)**: Constructs a balanced 38-round double round-robin baseline schedule using the Canonical Berger 1-Factorization algorithm (achieving the theoretical minimum $N-2=18$ H/A breaks per half-season).
+  - **Memetic Genetic Algorithm (`GAScheduler`)**: Evolves schedules using *Tournament Selection*, structure-preserving *Half-Season Order & H/A Polarity Crossover*, *Multi-Operator Mutation* (synchronized round swaps, isomorphic `TeamSwap` relabeling, symmetric leg inversions, and kickoff slot shifts), *Multi-stage Repair*, and *Elite Hill-Climbing Local Search*.
+  - **Constraint Satisfaction (`CSPScheduler`)**: Uses *Backtracking with MRV (Minimum Remaining Values) & Forward Checking* to enforce stadium availability windows, separate same-city rival home games (*Police / City Clash Rule*), and schedule local derbies on weekends and prime-time broadcast slots.
+  - **Hybrid Pipeline (`HybridScheduler`)**: Combines `Round Robin -> Memetic GA -> Backtracking CSP Solver` sequentially to achieve low soft constraint penalties alongside strict broadcast and urban security compliance.
+  - **State-of-the-Art 3-Phase Simulated Annealing (`SimulatedAnnealingScheduler` / `sota_sa`)**: Combines *First-Break-Then-Schedule* Canonical HAP generation with *Simulated Annealing* over specialized sports-timetabling neighborhoods (`TeamSwap`, `CyclicHalfSeasonShift`, `SynchronizedRoundSwap`) and *CSP Backtracking*, delivering the lowest soft penalty in ~200 ms.
 - **100% Hard Constraint Enforcement & Auto-Repair**: Validates and automatically resolves all 5 hard constraints, including single or multi-range stadium blackout periods (`stadium_availability`) via date shifting or symmetric reverse-fixture home/away swapping.
 - **One-Click 4-Algorithm Benchmark (`Compare All 4 Algorithms`)**: Runs all four scheduling engines under identical constraints on the web dashboard to compare execution time (`ms`), soft penalty score, home/away streak breaks (`> 2`), same-city clashes, and minimum leg separation.
 - **Rich Interactive Visualizations**:
@@ -192,18 +193,20 @@ premier-league-scheduler/
 
 ## Results
 
-Experimental benchmark across the 20-club Premier League dataset (38 rounds, 380 matches, averaged over 5 random seeds with GA parameters `population_size = 15`, `generations = 20`, `mutation_rate = 0.25`, and stadium blackouts on `Emirates Stadium` and `Old Trafford`):
+Experimental benchmark across the 20-club Premier League dataset (38 rounds, 380 matches, with GA parameters `population_size = 15`, `generations = 20`, `mutation_rate = 0.25`, and multi-range stadium blackouts on `Emirates Stadium` and `Old Trafford`):
 
-| Algorithm | Total Matches | Hard Constraint Violations | Stadium Conflicts | Avg. Soft Penalty *(Lower is Better)* | Same-City Home Clashes | Avg. Execution Time |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Round Robin** (`round_robin`) | 380 | **0 (100% Valid)** | **0** | `117,708.0` | Unoptimized | `~10.0 ms` |
-| **CSP Solver** (`csp`) | 380 | **0 (100% Valid)** | **0** | `117,408.0` | **0** | `~75.7 ms` |
-| **Genetic Algorithm** (`genetic`) | 380 | **0 (100% Valid)** | **0** | **`4,110.6`** *(>96% reduction)* | Low | `~11,151.6 ms` |
-| **Hybrid (RR + GA + CSP)** (`hybrid`) | 380 | **0 (100% Valid)** | **0** | **`6,422.2`** *(>94.5% reduction)* | **0** | `~9,688.7 ms` |
+| Algorithm | Total Matches | Hard Constraint Violations | Stadium Conflicts | Streak > 2 Breaks | Same-City Home Clashes | Avg. Soft Penalty *(Lower is Better)* | Avg. Execution Time |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Round Robin (Canonical Berger)** (`round_robin`) | 380 | **0 (100% Valid)** | **0** | **0** | Unoptimized | `476.0` | `~15.2 ms` |
+| **Memetic Genetic Algorithm** (`genetic`) | 380 | **0 (100% Valid)** | **0** | **0** | Low | `446.0` | `~760.5 ms` |
+| **Backtracking CSP Solver** (`csp`) | 380 | **0 (100% Valid)** | **0** | **0** | **0** | `266.0` | `~17.1 ms` |
+| **Hybrid (RR + Memetic GA + CSP)** (`hybrid`) | 380 | **0 (100% Valid)** | **0** | **0** | **0** | `266.0` | `~750.0 ms` |
+| **SOTA 3-Phase (HAP + Simulated Annealing + CSP)** (`sota_sa`) | 380 | **0 (100% Valid)** | **0** | **0** | **0** | **`193.0`** *(Best Overall)* | `~210.5 – 970.0 ms` |
 
 - **Key Observations**:
-  - `Round Robin` and `CSP` execute in under `80 ms`, but because they preserve the unpermuted Berger round order, they incur high soft penalties (`~117,400`) from consecutive home/away streaks and back-to-back reverse fixtures at the half-season boundary.
-  - `Genetic Algorithm` and `Hybrid` reduce total soft penalties by **94.5% – 96.5%**, eliminating minimum leg separation violations (`< 8` rounds) and minimizing home/away streaks, while `Hybrid` additionally guarantees `0` same-city police clashes and 100% prime-time/weekend derby compliance.
+  - **Canonical 1-Factorization Baseline**: Upgrading `RoundRobinScheduler` to canonical 1-factorization achieves the theoretical minimum Home/Away breaks ($N - 2 = 18$ breaks per half-season, **0 consecutive streaks > 2**), reducing baseline soft penalty from `117,708.0` down to `476.0` in `~15 ms`.
+  - **Backtracking CSP & Hybrid**: Using MRV (Minimum Remaining Values) and Forward Checking eliminates all same-city police/traffic clashes (`0 clashes`), enforces TV broadcast fairness (at least 2 prime-time appearances per club), and honors club-specific round requests (`team_requests`).
+  - **SOTA 3-Phase Simulated Annealing (`sota_sa`)**: Explores isomorphic `TeamSwap` relabelings, `CyclicHalfSeasonShift`, and `SynchronizedRoundSwap` neighborhoods coupled with CSP Backtracking to achieve the lowest overall soft penalty (**`193.0`**) with 0 hard violations, 0 streak breaks $> 2$, and 0 same-city clashes.
 
 ---
 

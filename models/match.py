@@ -53,21 +53,21 @@ class Match:
 
     @property
     def date_obj(self):
-        if isinstance(self.date, datetime):
-            return self.date.date()
         if isinstance(self.date, date):
-            return self.date
+            return self.date.date() if isinstance(self.date, datetime) else self.date
         if isinstance(self.date, str) and self.date:
             try:
-                return datetime.strptime(self.date, "%Y-%m-%d").date()
+                return datetime.strptime(self.date[:10], "%Y-%m-%d").date()
             except ValueError:
                 return None
         return None
 
     @property
     def date_str(self) -> str:
-        d = self.date_obj
-        return d.strftime("%Y-%m-%d") if d else (str(self.date) if self.date else "")
+        if isinstance(self.date, date):
+            d = self.date.date() if isinstance(self.date, datetime) else self.date
+            return d.isoformat()
+        return str(self.date)[:10] if self.date else ""
 
     @property
     def day_name(self) -> str:
@@ -77,7 +77,7 @@ class Match:
     @property
     def time_str(self) -> str:
         if isinstance(self.time, dt_time):
-            return self.time.strftime("%H:%M")
+            return f"{self.time.hour:02d}:{self.time.minute:02d}"
         if isinstance(self.time, str) and self.time:
             return self.time[:5]
         return "15:00"
@@ -91,12 +91,10 @@ class Match:
     def is_prime_time(self) -> bool:
         if self._is_prime_time:
             return True
+        if isinstance(self.time, dt_time):
+            return (self.time.hour > 17 or (self.time.hour == 17 and self.time.minute >= 30)) and self.is_weekend
         t_str = self.time_str
-        try:
-            t_val = datetime.strptime(t_str, "%H:%M").time()
-            return t_val >= dt_time(17, 30) and self.is_weekend
-        except ValueError:
-            return False
+        return t_str >= "17:30" and self.is_weekend
 
     @is_prime_time.setter
     def is_prime_time(self, value: bool):
