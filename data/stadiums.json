@@ -1,0 +1,22 @@
+[
+  { "id": 1, "name": "Emirates Stadium", "city": "London" },
+  { "id": 2, "name": "Villa Park", "city": "Birmingham" },
+  { "id": 3, "name": "Vitality Stadium", "city": "Bournemouth" },
+  { "id": 4, "name": "Gtech Community Stadium", "city": "London" },
+  { "id": 5, "name": "Amex Stadium", "city": "Brighton" },
+  { "id": 6, "name": "Stamford Bridge", "city": "London" },
+  { "id": 7, "name": "Selhurst Park", "city": "London" },
+  { "id": 8, "name": "Goodison Park", "city": "Liverpool" },
+  { "id": 9, "name": "Craven Cottage", "city": "London" },
+  { "id": 10, "name": "Elland Road", "city": "Leeds" },
+  { "id": 11, "name": "King Power Stadium", "city": "Leicester" },
+  { "id": 12, "name": "Anfield", "city": "Liverpool" },
+  { "id": 13, "name": "Etihad Stadium", "city": "Manchester" },
+  { "id": 14, "name": "Old Trafford", "city": "Manchester" },
+  { "id": 15, "name": "St James' Park", "city": "Newcastle" },
+  { "id": 16, "name": "City Ground", "city": "Nottingham" },
+  { "id": 17, "name": "St Mary's Stadium", "city": "Southampton" },
+  { "id": 18, "name": "Tottenham Hotspur Stadium", "city": "London" },
+  { "id": 19, "name": "London Stadium", "city": "London" },
+  { "id": 20, "name": "Molineux Stadium", "city": "Wolverhampton" }
+]

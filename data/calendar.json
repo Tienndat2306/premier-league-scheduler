@@ -1,0 +1,8 @@
+{
+  "season": "Premier League Schedule 2024-2025",
+  "season_start": "2024-08-17",
+  "rounds": 38,
+  "matches_per_round": 10,
+  "match_days": ["Friday", "Saturday", "Sunday", "Monday"],
+  "time_slots": ["12:30", "15:00", "17:30", "20:00"]
+}

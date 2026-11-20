@@ -1,0 +1,10 @@
+[
+  ["Manchester United", "Manchester City"],
+  ["Liverpool", "Everton"],
+  ["Arsenal", "Tottenham"],
+  ["Chelsea", "Tottenham"],
+  ["Manchester United", "Liverpool"],
+  ["Arsenal", "Chelsea"],
+  ["Chelsea", "Fulham"],
+  ["Crystal Palace", "Brighton"]
+]

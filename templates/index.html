@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premier League Schedule Optimizer</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+<div class="container">
+    <header class="header">
+        <h1><i class="fas fa-futbol"></i> Premier League Schedule Optimizer</h1>
+        <p class="subtitle">Round Robin • Genetic Algorithm • CSP • Hybrid</p>
+    </header>
+
+    <div class="content">
+
+        <!-- CLUB LIST WITH STADIUM & CITY FROM JSON -->
+        <div class="card">
+            <h2><i class="fas fa-list-ol"></i> Premier League Clubs ({{ clubs|length }})</h2>
+            <div class="clubs-list">
+                {% for club in clubs %}
+                {% set meta = team_metadata.get(club, {}) %}
+                <div class="club-item" title="{{ meta.get('stadium', club ~ ' Stadium') }} ({{ meta.get('city', '') }})">
+                    <div class="club-main-line">
+                        <i class="fas fa-shield-alt"></i> <strong>{{ club }}</strong>
+                        {% if meta.get('short') %}
+                        <span class="club-short-tag">{{ meta.get('short') }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="club-sub-line">
+                        <i class="fas fa-landmark"></i> {{ meta.get('stadium', club ~ ' Stadium') }} • {{ meta.get('city', '') }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- GENERATE & GA PARAMETERS -->
+        <div class="card">
+            <h2><i class="fas fa-cogs"></i> Generate Schedule</h2>
+
+            <div class="gen-config-grid">
+                <div class="form-group">
+                    <label for="algorithm"><i class="fas fa-microchip"></i> Select Algorithm</label>
+                    <select id="algorithm" class="form-control">
+                        <option value="round_robin">Round Robin (Basic Berger Table)</option>
+                        <option value="genetic">Genetic Algorithm (GA Optimizer)</option>
+                        <option value="csp">Constraint Satisfaction (CSP Solver)</option>
+                        <option value="hybrid" selected>Hybrid (Round Robin + GA + CSP)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="seasonStart"><i class="far fa-calendar-alt"></i> Season Start Date</label>
+                    <input type="date" id="seasonStart" class="form-control"
+                           value="{{ constraints.get('season_start', '2024-08-17') }}">
+                </div>
+            </div>
+
+            <!-- GA PARAMETERS PANEL (Hiển thị khi chọn Genetic hoặc Hybrid) -->
+            <div id="gaParamsPanel" class="ga-params-box" style="display:none;">
+                <h4><i class="fas fa-dna"></i> Genetic Algorithm Parameters</h4>
+                <div class="ga-grid">
+                    <div class="form-group">
+                        <label for="gaPopulationSize">Population Size (4 - 200):</label>
+                        <input type="number" id="gaPopulationSize" class="form-control" min="4" max="200"
+                               value="{{ constraints.get('ga_params', {}).get('population_size', 40) }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="gaGenerations">Generations (1 - 500):</label>
+                        <input type="number" id="gaGenerations" class="form-control" min="1" max="500"
+                               value="{{ constraints.get('ga_params', {}).get('generations', 80) }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="gaMutationRate">Mutation Rate (0.0 - 1.0):</label>
+                        <input type="number" id="gaMutationRate" class="form-control" min="0" max="1" step="0.05"
+                               value="{{ constraints.get('ga_params', {}).get('mutation_rate', 0.25) }}">
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button id="generateBtn" class="btn btn-primary">
+                    <i class="fas fa-magic"></i> Generate Schedule
+                </button>
+
+                <button id="compareAllBtn" class="btn btn-secondary" type="button">
+                    <i class="fas fa-balance-scale"></i> Compare All 4 Algorithms
+                </button>
+
+                <a href="/constraints" class="btn btn-secondary">
+                    <i class="fas fa-sliders-h"></i> Set Constraints & GA Config
+                </a>
+
+                <a href="/full_schedule" class="btn btn-secondary">
+                    <i class="fas fa-calendar-alt"></i> View Full Schedule & Matrix
+                </a>
+
+                <a href="/export_excel" class="btn btn-excel">
+                    <i class="fas fa-file-excel"></i> Export to Excel
+                </a>
+            </div>
+
+            <div id="loading" class="loading" style="display:none;">
+                <i class="fas fa-spinner fa-spin"></i> Optimizing 380 matches across 38 rounds...
+            </div>
+        </div>
+
+        <!-- ALGORITHM BENCHMARK COMPARISON CARD -->
+        <div id="comparisonCard" class="card" style="display:none;">
+            <div class="results-header">
+                <h2><i class="fas fa-trophy"></i> 4-Algorithm Benchmark Comparison</h2>
+                <button type="button" id="closeComparisonBtn" class="btn btn-secondary btn-small">
+                    <i class="fas fa-times"></i> Hide Comparison
+                </button>
+            </div>
+            <p style="margin-bottom: 12px; color: #555;">Direct benchmark of all 4 scheduling engines under current constraints and GA parameters:</p>
+            <div id="comparisonTableWrap" class="balance-table"></div>
+        </div>
+
+        <!-- RESULTS -->
+        <div id="results" class="card" style="display:none;">
+            <div class="results-header">
+                <h2><i class="fas fa-calendar-check"></i> Generated Match Schedule</h2>
+                <div class="results-actions">
+                    <a href="/export_excel" class="btn btn-excel btn-small">
+                        <i class="fas fa-file-excel"></i> Download Excel (.xlsx)
+                    </a>
+                    <a href="/full_schedule" class="btn btn-primary btn-small">
+                        <i class="fas fa-external-link-alt"></i> Open Full Calendar & H/A Matrix
+                    </a>
+                    <button type="button" id="clearScheduleBtn" class="btn btn-secondary btn-small" title="Clear saved schedule">
+                        <i class="fas fa-trash-alt"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- ALGORITHM QUALITY & CONVERGENCE BANNER -->
+            <div id="qualityBanner" class="quality-banner"></div>
+
+            <!-- GA CONVERGENCE CHART (Hiển thị khi chạy GA hoặc Hybrid) -->
+            <div id="convergenceBox" class="convergence-box" style="display:none;">
+                <h4><i class="fas fa-chart-line"></i> Genetic Algorithm Convergence Curve (Soft Penalty vs Generation)</h4>
+                <div class="convergence-canvas-wrap">
+                    <canvas id="convergenceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- QUICK FILTER TOOLBAR FOR ROUNDS & TEAMS -->
+            <div class="quick-filter-bar">
+                <div class="filter-item">
+                    <label for="quickRoundSelect"><i class="fas fa-layer-group"></i> Matchweek / Round:</label>
+                    <div class="round-nav-group">
+                        <button type="button" id="prevRoundBtn" class="btn btn-secondary btn-small" title="Previous Round">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <select id="quickRoundSelect" class="form-control">
+                            <option value="all">All 38 Rounds</option>
+                        </select>
+                        <button type="button" id="nextRoundBtn" class="btn btn-secondary btn-small" title="Next Round">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <label for="quickTeamSelect"><i class="fas fa-shield-alt"></i> Filter by Club:</label>
+                    <select id="quickTeamSelect" class="form-control">
+                        <option value="all">All 20 Clubs</option>
+                        {% for club in clubs %}
+                        <option value="{{ club }}">{{ club }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label for="quickTypeSelect"><i class="fas fa-filter"></i> Match Type:</label>
+                    <select id="quickTypeSelect" class="form-control">
+                        <option value="all">All Matches</option>
+                        <option value="derby">Derby Matches Only</option>
+                        <option value="prime">Prime Time Only</option>
+                        <option value="weekend">Weekend Only</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="scheduleTable"></div>
+            <div id="analysisResults"></div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ================= JS ================= -->
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script id="clubs-data" type="application/json">
+    {{ clubs | tojson }}
+</script>
+
+<script id="saved-response-data" type="application/json">
+    {{ (saved_response or None) | tojson }}
+</script>
+
+<script>
+    let CLUBS = [];
+    let CURRENT_SCHEDULE = [];
+    let SAVED_RESPONSE = null;
+    let convergenceChartInstance = null;
+
+    try {
+        CLUBS = JSON.parse(document.getElementById("clubs-data").textContent);
+    } catch (e) {
+        CLUBS = [];
+    }
+
+    try {
+        SAVED_RESPONSE = JSON.parse(document.getElementById("saved-response-data").textContent);
+    } catch (e) {
+        SAVED_RESPONSE = null;
+    }
+
+    function applyGeneratedResult(res, shouldScroll) {
+        if (!res || !res.schedule || !res.schedule.length) return;
+
+        CURRENT_SCHEDULE = res.schedule;
+        if (res.algorithm_used) {
+            $('#algorithm').val(res.algorithm_used);
+        }
+        if (res.season_start) {
+            $('#seasonStart').val(res.season_start);
+        }
+        if (res.ga_params_used) {
+            if (res.ga_params_used.population_size) $('#gaPopulationSize').val(res.ga_params_used.population_size);
+            if (res.ga_params_used.generations) $('#gaGenerations').val(res.ga_params_used.generations);
+            if (res.ga_params_used.mutation_rate !== undefined) $('#gaMutationRate').val(res.ga_params_used.mutation_rate);
+        }
+
+        renderQualityBanner(res);
+        renderConvergenceChart(res.fitness_history || []);
+        populateRoundDropdown(CURRENT_SCHEDULE);
+
+        // Khôi phục bộ lọc đang chọn trước khi chuyển trang (nếu có trong sessionStorage)
+        const savedRound = sessionStorage.getItem('epl_quick_round') || '1';
+        const savedTeam = sessionStorage.getItem('epl_quick_team') || 'all';
+        const savedType = sessionStorage.getItem('epl_quick_type') || 'all';
+
+        $('#quickRoundSelect').val(savedRound);
+        $('#quickTeamSelect').val(savedTeam);
+        $('#quickTypeSelect').val(savedType);
+
+        renderFilteredSchedule();
+        analyzeSchedule(CURRENT_SCHEDULE);
+        $('#results').show();
+
+        if (shouldScroll) {
+            $('html, body').animate({
+                scrollTop: $("#results").offset().top - 20
+            }, 600);
+        }
+    }
+
+    $(document).ready(function () {
+        function toggleGAPanel() {
+            const alg = $('#algorithm').val();
+            if (alg === 'genetic' || alg === 'hybrid') {
+                $('#gaParamsPanel').slideDown(150);
+            } else {
+                $('#gaParamsPanel').slideUp(150);
+            }
+        }
+
+        $('#algorithm').on('change', toggleGAPanel);
+
+        function restoreSavedSchedule() {
+            // 1. Ưu tiên đọc từ localStorage (luôn tồn tại ngay tức thì trên trình duyệt)
+            try {
+                const cachedStr = localStorage.getItem('epl_saved_response_v1');
+                if (cachedStr) {
+                    const parsed = JSON.parse(cachedStr);
+                    if (parsed && parsed.schedule && parsed.schedule.length > 0) {
+                        applyGeneratedResult(parsed, false);
+                        toggleGAPanel();
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            // 2. Đọc từ dữ liệu Server nhúng sẵn trong HTML
+            if (SAVED_RESPONSE && SAVED_RESPONSE.schedule && SAVED_RESPONSE.schedule.length > 0) {
+                try {
+                    localStorage.setItem('epl_saved_response_v1', JSON.stringify(SAVED_RESPONSE));
+                } catch (e) {}
+                applyGeneratedResult(SAVED_RESPONSE, false);
+                toggleGAPanel();
+                return;
+            }
+
+            // 3. Fallback gọi API /get_latest_schedule từ Backend
+            $.getJSON('/get_latest_schedule', function (resp) {
+                if (resp && resp.has_schedule && resp.data) {
+                    try {
+                        localStorage.setItem('epl_saved_response_v1', JSON.stringify(resp.data));
+                    } catch (e) {}
+                    applyGeneratedResult(resp.data, false);
+                    toggleGAPanel();
+                }
+            });
+        }
+
+        restoreSavedSchedule();
+        toggleGAPanel();
+
+        // Đảm bảo khi người dùng ấn nút Back của trình duyệt (bfcache), lịch vẫn được hiển thị lại
+        window.addEventListener('pageshow', function () {
+            if (!CURRENT_SCHEDULE || CURRENT_SCHEDULE.length === 0 || !$('#results').is(':visible')) {
+                restoreSavedSchedule();
+            }
+        });
+
+        $('#clearScheduleBtn').click(function () {
+            localStorage.removeItem('epl_saved_response_v1');
+            sessionStorage.removeItem('epl_quick_round');
+            sessionStorage.removeItem('epl_quick_team');
+            sessionStorage.removeItem('epl_quick_type');
+            CURRENT_SCHEDULE = [];
+            SAVED_RESPONSE = null;
+            $('#results').slideUp(200);
+            $.post('/clear_schedule');
+        });
+
+        $('#closeComparisonBtn').click(function () {
+            $('#comparisonCard').slideUp(200);
+        });
+
+        $('#compareAllBtn').click(function () {
+            const seasonStart = $('#seasonStart').val();
+            const gaParams = {
+                population_size: parseInt($('#gaPopulationSize').val() || 20),
+                generations: parseInt($('#gaGenerations').val() || 30),
+                mutation_rate: parseFloat($('#gaMutationRate').val() || 0.25)
+            };
+
+            $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Benchmarking Round Robin, Genetic Algorithm, CSP, and Hybrid...').show();
+
+            $.ajax({
+                url: "/compare_algorithms",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    clubs: CLUBS,
+                    season_start: seasonStart,
+                    ga_params: gaParams
+                }),
+                success: function (res) {
+                    $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Optimizing 380 matches across 38 rounds...').hide();
+                    if (!res || !res.results) {
+                        alert("Failed to run algorithm comparison.");
+                        return;
+                    }
+                    renderComparisonTable(res.results);
+                    $('#comparisonCard').slideDown(250);
+                    $('html, body').animate({
+                        scrollTop: $("#comparisonCard").offset().top - 20
+                    }, 500);
+                },
+                error: function (xhr) {
+                    $('#loading').html('<i class="fas fa-spinner fa-spin"></i> Optimizing 380 matches across 38 rounds...').hide();
+                    alert("Benchmark error! Status: " + xhr.status);
+                }
+            });
+        });
+
+        $('#generateBtn').click(function () {
+            const algorithm = $('#algorithm').val();
+            const seasonStart = $('#seasonStart').val();
+            const gaParams = {
+                population_size: parseInt($('#gaPopulationSize').val() || 40),
+                generations: parseInt($('#gaGenerations').val() || 80),
+                mutation_rate: parseFloat($('#gaMutationRate').val() || 0.25)
+            };
+
+            $('#loading').show();
+            $('#results').hide();
+
+            $.ajax({
+                url: "/generate_schedule",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    algorithm: algorithm,
+                    clubs: CLUBS,
+                    season_start: seasonStart,
+                    ga_params: gaParams
+                }),
+                success: function (res) {
+                    $('#loading').hide();
+
+                    if (!res.schedule) {
+                        alert("No schedule returned!");
+                        return;
+                    }
+
+                    sessionStorage.setItem('epl_quick_round', '1');
+                    sessionStorage.setItem('epl_quick_team', 'all');
+                    sessionStorage.setItem('epl_quick_type', 'all');
+                    try {
+                        localStorage.setItem('epl_saved_response_v1', JSON.stringify(res));
+                    } catch (e) {}
+                    applyGeneratedResult(res, true);
+                },
+                error: function (xhr) {
+                    $('#loading').hide();
+                    alert("Server error! Status: " + xhr.status);
+                }
+            });
+        });
+
+        $('#quickTeamSelect, #quickTypeSelect').on('change', function () {
+            const team = $('#quickTeamSelect').val();
+            const type = $('#quickTypeSelect').val();
+            if ((team !== 'all' || type !== 'all') && $('#quickRoundSelect').val() !== 'all') {
+                $('#quickRoundSelect').val('all');
+            }
+            sessionStorage.setItem('epl_quick_round', $('#quickRoundSelect').val());
+            sessionStorage.setItem('epl_quick_team', team);
+            sessionStorage.setItem('epl_quick_type', type);
+            renderFilteredSchedule();
+        });
+
+        $('#quickRoundSelect').on('change', function () {
+            sessionStorage.setItem('epl_quick_round', $(this).val());
+            renderFilteredSchedule();
+        });
+
+        $('#prevRoundBtn').click(function () {
+            const sel = $('#quickRoundSelect');
+            const val = sel.val();
+            if (val === 'all') {
+                sel.val('1').trigger('change');
+            } else {
+                const num = parseInt(val);
+                if (num > 1) {
+                    sel.val(String(num - 1)).trigger('change');
+                }
+            }
+        });
+
+        $('#nextRoundBtn').click(function () {
+            const sel = $('#quickRoundSelect');
+            const val = sel.val();
+            const maxRound = $('#quickRoundSelect option').length - 1;
+            if (val === 'all') {
+                sel.val('1').trigger('change');
+            } else {
+                const num = parseInt(val);
+                if (num < maxRound) {
+                    sel.val(String(num + 1)).trigger('change');
+                }
+            }
+        });
+    });
+
+    function renderComparisonTable(rows) {
+        if (!rows || !rows.length) return;
+        const minPenalty = Math.min(...rows.map(r => r.total_penalty));
+        let html = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Algorithm</th>
+                        <th>Matches</th>
+                        <th>Hard Constraints</th>
+                        <th>Soft Penalty (Lower = Better)</th>
+                        <th>Streak &gt; 2 Breaks</th>
+                        <th>City Home Clashes</th>
+                        <th>Min 1st/2nd Leg Gap</th>
+                        <th>Weekend / Prime</th>
+                        <th>Execution Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        rows.forEach(r => {
+            const isBest = r.total_penalty === minPenalty;
+            const hardBadge = r.is_valid_hard
+                ? '<span class="good-balance"><i class="fas fa-check-circle"></i> 0 Violations</span>'
+                : '<span class="bad-balance">Violated</span>';
+            html += `
+                <tr style="${isBest ? 'background: rgba(0, 255, 133, 0.12); font-weight: 600;' : ''}">
+                    <td><strong>${r.label}</strong> ${isBest ? '<span class="derby-badge" style="margin-left:6px;">Best Fitness</span>' : ''}</td>
+                    <td>${r.total_matches}</td>
+                    <td>${hardBadge}</td>
+                    <td class="${isBest ? 'good-balance' : ''}"><strong>${r.total_penalty}</strong></td>
+                    <td>${r.streak_breaks_count}</td>
+                    <td class="${r.city_clash_count === 0 ? 'good-balance' : 'bad-balance'}">${r.city_clash_count}</td>
+                    <td>${r.min_leg_gap} rounds</td>
+                    <td>${r.weekend_matches} / ${r.prime_time_matches}</td>
+                    <td>${r.execution_time_ms} ms</td>
+                </tr>
+            `;
+        });
+        html += `</tbody></table>`;
+        $('#comparisonTableWrap').html(html);
+    }
+
+    function renderQualityBanner(res) {
+        const algLabels = {
+            round_robin: 'Round Robin (Berger Table)',
+            genetic: 'Genetic Algorithm (GA)',
+            csp: 'Constraint Satisfaction (CSP)',
+            hybrid: 'Hybrid Pipeline (RR + GA + CSP)'
+        };
+        const algName = algLabels[res.algorithm_used] || res.algorithm_used;
+        const execTime = res.execution_time_ms !== undefined ? `${res.execution_time_ms} ms` : '-';
+        const hardValid = res.is_valid_hard_constraints
+            ? '<span class="q-badge q-ok"><i class="fas fa-check-circle"></i> 0 Hard Violations (100% Valid)</span>'
+            : '<span class="q-badge q-err"><i class="fas fa-exclamation-triangle"></i> Hard Violation</span>';
+
+        const sd = res.soft_details || {};
+        const totalPenalty = sd.total_penalty !== undefined ? sd.total_penalty : '-';
+        const cityClashes = sd.city_clash_count !== undefined ? sd.city_clash_count : 0;
+        const minGap = sd.min_leg_gap !== undefined ? `${sd.min_leg_gap} rounds` : '-';
+
+        $('#qualityBanner').html(`
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-microchip"></i> Algorithm</span>
+                <span class="q-val">${algName}</span>
+            </div>
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-stopwatch"></i> Execution Time</span>
+                <span class="q-val">${execTime}</span>
+            </div>
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-shield-check"></i> Hard Constraints</span>
+                <span class="q-val">${hardValid}</span>
+            </div>
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-balance-scale"></i> Soft Penalty Score</span>
+                <span class="q-val"><strong>${totalPenalty}</strong> <small>(Lower is better)</small></span>
+            </div>
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-city"></i> Same-City Home Clashes</span>
+                <span class="q-val">${cityClashes === 0 ? '<span class="q-ok-text">0 Clashes</span>' : cityClashes + ' Clashes'}</span>
+            </div>
+            <div class="q-item">
+                <span class="q-label"><i class="fas fa-arrows-alt-h"></i> Min 1st/2nd Leg Gap</span>
+                <span class="q-val">${minGap}</span>
+            </div>
+        `);
+    }
+
+    function renderConvergenceChart(history) {
+        if (!history || !Array.isArray(history) || history.length < 2) {
+            $('#convergenceBox').hide();
+            return;
+        }
+        $('#convergenceBox').show();
+        const ctx = document.getElementById('convergenceChart').getContext('2d');
+        if (convergenceChartInstance) {
+            convergenceChartInstance.destroy();
+        }
+        convergenceChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: history.map((_, idx) => `Gen ${idx + 1}`),
+                datasets: [{
+                    label: 'Best Soft Penalty',
+                    data: history,
+                    borderColor: '#37003c',
+                    backgroundColor: 'rgba(55, 0, 60, 0.12)',
+                    borderWidth: 2.5,
+                    pointRadius: 2,
+                    fill: true,
+                    tension: 0.25
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        title: { display: true, text: 'Penalty (Lower = Better)' }
+                    },
+                    x: {
+                        title: { display: true, text: 'Generation' }
+                    }
+                }
+            }
+        });
+    }
+
+    function populateRoundDropdown(schedule) {
+        const roundSet = new Set();
+        schedule.forEach(m => {
+            if (m && m.round) roundSet.add(parseInt(m.round));
+        });
+        const sortedRounds = Array.from(roundSet).sort((a, b) => a - b);
+
+        let optionsHtml = '<option value="all">All ' + sortedRounds.length + ' Rounds (380 Matches)</option>';
+        sortedRounds.forEach(r => {
+            optionsHtml += `<option value="${r}">Matchweek ${r}</option>`;
+        });
+        $('#quickRoundSelect').html(optionsHtml);
+    }
+
+    function renderFilteredSchedule() {
+        const selectedRound = $('#quickRoundSelect').val();
+        const selectedTeam = $('#quickTeamSelect').val();
+        const selectedType = $('#quickTypeSelect').val();
+
+        const filtered = CURRENT_SCHEDULE.filter(m => {
+            if (!m) return false;
+            if (selectedRound !== 'all' && String(m.round) !== String(selectedRound)) {
+                return false;
+            }
+            if (selectedTeam !== 'all' && m.home !== selectedTeam && m.away !== selectedTeam) {
+                return false;
+            }
+            if (selectedType === 'derby' && !m.is_derby) return false;
+            if (selectedType === 'prime' && !m.is_prime_time) return false;
+            if (selectedType === 'weekend' && !m.is_weekend) return false;
+            return true;
+        });
+
+        displaySchedule(filtered);
+    }
+
+    // ================= PREMIER LEAGUE BROADCAST-STYLE MATCHWEEK DISPLAY =================
+    function displaySchedule(schedule) {
+        if (!schedule || !Array.isArray(schedule)) {
+            $('#scheduleTable').html('<div class="error">Invalid schedule data</div>');
+            return;
+        }
+
+        let html = '<div class="schedule-container">';
+        const rounds = {};
+
+        schedule.forEach(m => {
+            if (!m || !m.round) return;
+            if (!rounds[m.round]) rounds[m.round] = [];
+            rounds[m.round].push(m);
+        });
+
+        const sortedRounds = Object.keys(rounds).sort((a, b) => parseInt(a) - parseInt(b));
+
+        if (sortedRounds.length === 0) {
+            html += '<div class="no-data">No matches match the selected filters. Try switching "Matchweek" to "All 38 Rounds".</div>';
+        } else {
+            sortedRounds.forEach(round => {
+                const roundMatches = rounds[round].slice().sort((a, b) => {
+                    const da = `${a.date || ''} ${a.time || '15:00'}`;
+                    const db = `${b.date || ''} ${b.time || '15:00'}`;
+                    return da.localeCompare(db);
+                });
+
+                const dates = roundMatches.map(m => m.date).filter(Boolean).sort();
+                const dateRangeStr = dates.length > 0
+                    ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} — ${dates[dates.length - 1]}`)
+                    : 'No date';
+
+                const derbyCnt = roundMatches.filter(m => m.is_derby).length;
+                const primeCnt = roundMatches.filter(m => m.is_prime_time).length;
+
+                html += `
+                    <div class="epl-matchweek-card">
+                        <div class="epl-mw-header">
+                            <div class="epl-mw-title">
+                                <span class="epl-mw-badge">MW ${round}</span>
+                                <span>Matchweek ${round}</span>
+                            </div>
+                            <div class="epl-mw-meta">
+                                <span><i class="far fa-calendar-alt"></i> ${dateRangeStr}</span>
+                                <span><i class="fas fa-futbol"></i> ${roundMatches.length} Matches</span>
+                                ${derbyCnt > 0 ? `<span class="mw-pill derby-pill"><i class="fas fa-fire"></i> ${derbyCnt} Derby</span>` : ''}
+                                ${primeCnt > 0 ? `<span class="mw-pill prime-pill"><i class="fas fa-tv"></i> ${primeCnt} Prime</span>` : ''}
+                            </div>
+                        </div>
+                `;
+
+                // Gom nhóm các trận trong Vòng theo từng Ngày (Thứ Sáu, Thứ Bảy, Chủ Nhật, Thứ Hai)
+                const byDate = {};
+                roundMatches.forEach(m => {
+                    const key = m.date || 'TBD';
+                    if (!byDate[key]) byDate[key] = { day: m.day || '', list: [] };
+                    byDate[key].list.push(m);
+                });
+
+                Object.keys(byDate).sort().forEach(dateKey => {
+                    const dayGroup = byDate[dateKey];
+                    const isWknd = dayGroup.day === 'Saturday' || dayGroup.day === 'Sunday';
+                    html += `
+                        <div class="epl-day-group">
+                            <div class="epl-day-banner ${isWknd ? 'wknd-banner' : 'midweek-banner'}">
+                                <span><i class="far fa-calendar-check"></i> <strong>${dayGroup.day}</strong> • ${dateKey}</span>
+                                <span class="day-count-tag">${dayGroup.list.length} ${dayGroup.list.length === 1 ? ' fixture' : ' fixtures'}</span>
+                            </div>
+                            <div class="epl-fixtures-list">
+                    `;
+
+                    dayGroup.list.forEach(m => {
+                        const rowCls = m.is_derby ? 'epl-row-derby' : (m.is_prime_time ? 'epl-row-prime' : '');
+                        const hShort = m.home_short || (m.home || 'HOM').substring(0, 3).toUpperCase();
+                        const aShort = m.away_short || (m.away || 'AWY').substring(0, 3).toUpperCase();
+                        const cityStr = m.city ? ` • ${m.city}` : '';
+
+                        html += `
+                            <div class="epl-fixture-row ${rowCls}">
+                                <div class="epl-team-side home-side">
+                                    <span class="epl-team-name">${m.home}</span>
+                                    <span class="epl-club-crest home-crest">${hShort}</span>
+                                </div>
+
+                                <div class="epl-kickoff-box ${m.is_derby ? 'ko-derby' : (m.is_prime_time ? 'ko-prime' : '')}">
+                                    <span class="ko-time">${m.time || '15:00'}</span>
+                                </div>
+
+                                <div class="epl-team-side away-side">
+                                    <span class="epl-club-crest away-crest">${aShort}</span>
+                                    <span class="epl-team-name">${m.away}</span>
+                                </div>
+
+                                <div class="epl-venue-meta">
+                                    <span class="venue-text"><i class="fas fa-map-marker-alt"></i> ${m.venue}${cityStr}</span>
+                                    <span class="fixture-tags">
+                                        ${m.is_derby ? '<span class="derby-badge"><i class="fas fa-fire"></i> Derby</span>' : ''}
+                                        ${m.is_prime_time ? '<span class="prime-badge"><i class="fas fa-tv"></i> Prime</span>' : ''}
+                                    </span>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    html += `</div></div>`;
+                });
+
+                html += `</div>`;
+            });
+        }
+
+        html += '</div>';
+        $('#scheduleTable').html(html);
+    }
+
+    // ================= ANALYSIS & 38-ROUND HOME/AWAY SEQUENCE MATRIX =================
+    function analyzeSchedule(schedule) {
+        if (!schedule || !Array.isArray(schedule)) {
+            $('#analysisResults').html('<div class="error">Cannot analyze invalid schedule</div>');
+            return;
+        }
+
+        $.ajax({
+            url: "/analyze_schedule",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ schedule: schedule }),
+            success: function (analysis) {
+                let html = `
+                    <h3 style="margin-top: 30px; color: var(--primary-color);"><i class="fas fa-chart-bar"></i> Schedule Metrics & Quality Analysis</h3>
+                    <div class="analysis-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${schedule.length}</div>
+                            <div class="stat-label">Total Matches</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.derby_matches || 0}</div>
+                            <div class="stat-label">Derby Matches</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.weekend_matches || 0}</div>
+                            <div class="stat-label">Weekend Matches</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.prime_time_matches || 0}</div>
+                            <div class="stat-label">Prime Time</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.city_clashes || 0}</div>
+                            <div class="stat-label">City Home Clashes</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.min_leg_gap || 19} Rds</div>
+                            <div class="stat-label">Min Leg Separation</div>
+                        </div>
+                    </div>
+                `;
+
+                // 38-ROUND HOME/AWAY SEQUENCE MATRIX
+                if (analysis.team_sequences && Object.keys(analysis.team_sequences).length > 0) {
+                    html += `
+                        <div class="matrix-section">
+                            <div class="matrix-header-bar">
+                                <h4 style="color: var(--primary-color); margin: 0;">
+                                    <i class="fas fa-th"></i> 38-Round Home / Away Sequence Matrix
+                                </h4>
+                                <div class="matrix-legend">
+                                    <span><span class="m-box m-home">H</span> Home</span>
+                                    <span><span class="m-box m-away">A</span> Away</span>
+                                    <span><span class="m-box m-derby">H</span> Derby Match</span>
+                                    <span><span class="m-box m-streak-warn">!</span> Streak &gt; 2</span>
+                                </div>
+                            </div>
+                            <div class="matrix-scroll-wrap">
+                                <table class="ha-matrix-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="sticky-club-col">Club</th>
+                    `;
+                    for (let r = 1; r <= 38; r++) {
+                        html += `<th>R${r}</th>`;
+                    }
+                    html += `</tr></thead><tbody>`;
+
+                    Object.keys(analysis.team_sequences).sort().forEach(club => {
+                        const seq = analysis.team_sequences[club] || [];
+                        const seqByRound = {};
+                        seq.forEach(item => { seqByRound[item.round] = item; });
+
+                        html += `<tr><td class="sticky-club-col"><strong>${club}</strong></td>`;
+                        for (let r = 1; r <= 38; r++) {
+                            const item = seqByRound[r];
+                            if (!item) {
+                                html += `<td>-</td>`;
+                            } else {
+                                const typeCls = item.type === 'H' ? 'm-home' : 'm-away';
+                                const derbyCls = item.is_derby ? 'm-derby' : '';
+                                const streakCls = item.streak > 2 ? 'm-streak-warn' : '';
+                                const tip = `R${r} (${item.date} ${item.time}): ${item.type === 'H' ? 'vs' : '@'} ${item.opponent}${item.is_derby ? ' [DERBY]' : ''} (Streak: ${item.streak}${item.type})`;
+                                html += `<td><span class="m-box ${typeCls} ${derbyCls} ${streakCls}" title="${tip}">${item.type}</span></td>`;
+                            }
+                        }
+                        html += `</tr>`;
+                    });
+
+                    html += `</tbody></table></div></div>`;
+                }
+
+                if (analysis.home_away_balance && Object.keys(analysis.home_away_balance).length > 0) {
+                    html += '<h4 style="color: var(--primary-color); margin-top: 25px;"><i class="fas fa-balance-scale"></i> Club Balance, Stadium & Max Consecutive Streaks</h4>';
+                    html += '<div class="balance-table"><table>';
+                    html += '<thead><tr><th>Club</th><th>Stadium (City)</th><th>Home</th><th>Away</th><th>Total</th><th>Diff</th><th>Derbies</th><th>Prime</th><th>Max H/A Streak</th></tr></thead><tbody>';
+
+                    Object.keys(analysis.home_away_balance).sort().forEach(club => {
+                        const b = analysis.home_away_balance[club];
+                        const diffClass = b.difference > 2 ? 'bad-balance' : 'good-balance';
+                        const stInfo = b.stadium ? `${b.stadium}${b.city ? ' (' + b.city + ')' : ''}` : '-';
+                        const streakWarn = (b.max_home_streak > 2 || b.max_away_streak > 2) ? 'bad-balance' : 'good-balance';
+
+                        html += `
+                            <tr>
+                                <td><strong>${club}</strong></td>
+                                <td><small>${stInfo}</small></td>
+                                <td>${b.home || 0}</td>
+                                <td>${b.away || 0}</td>
+                                <td>${(b.home || 0) + (b.away || 0)}</td>
+                                <td class="${diffClass}">${b.difference || 0}</td>
+                                <td>${b.derby || 0}</td>
+                                <td>${b.prime_time || 0}</td>
+                                <td class="${streakWarn}">${b.max_home_streak || 0}H / ${b.max_away_streak || 0}A</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += '</tbody></table></div>';
+                }
+
+                $('#analysisResults').html(html);
+            },
+            error: function(xhr, status, error) {
+                $('#analysisResults').html(`
+                    <div class="error">
+                        <p>Error loading analysis: ${error}</p>
+                    </div>
+                `);
+            }
+        });
+    }
+</script>
+
+<style>
+    .club-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 4px;
+    }
+    .club-main-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+    }
+    .club-short-tag {
+        margin-left: auto;
+        background: #f3e5f5;
+        color: var(--primary-color);
+        border: 1px solid #e1bee7;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 5px;
+    }
+    .club-sub-line {
+        font-size: 0.78rem;
+        color: #666;
+    }
+    .gen-config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 15px;
+    }
+    .ga-params-box {
+        background: #f8f5fa;
+        border: 1px solid #e2d4ec;
+        border-left: 4px solid var(--primary-color);
+        border-radius: 8px;
+        padding: 15px 18px;
+        margin-bottom: 18px;
+    }
+    .ga-params-box h4 {
+        color: var(--primary-color);
+        margin-top: 0;
+        margin-bottom: 12px;
+    }
+    .ga-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+    }
+    .btn-excel {
+        background-color: #1d6f42;
+        color: white;
+        text-decoration: none;
+    }
+    .btn-excel:hover {
+        background-color: #155732;
+        color: white;
+    }
+    .results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-bottom: 16px;
+    }
+    .results-header h2 {
+        margin-bottom: 0;
+    }
+    .results-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    /* QUALITY BANNER & CONVERGENCE */
+    .quality-banner {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+        gap: 12px;
+        background: linear-gradient(135deg, #2b0030 0%, #37003c 100%);
+        color: white;
+        padding: 16px;
+        border-radius: 10px;
+        margin-bottom: 18px;
+        box-shadow: 0 4px 12px rgba(55, 0, 60, 0.18);
+    }
+    .q-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+    .q-label {
+        font-size: 0.78rem;
+        color: #d9c2e0;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .q-val {
+        font-size: 0.96rem;
+        font-weight: 600;
+        color: #fff;
+    }
+    .q-badge.q-ok {
+        color: #a7f3d0;
+        font-weight: 700;
+    }
+    .q-ok-text {
+        color: #a7f3d0;
+        font-weight: 700;
+    }
+    .convergence-box {
+        background: #fff;
+        border: 1px solid #e4d8eb;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+    .convergence-box h4 {
+        margin: 0 0 10px 0;
+        color: var(--primary-color);
+    }
+    .convergence-canvas-wrap {
+        height: 190px;
+    }
+
+    /* QUICK FILTER */
+    .quick-filter-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 15px;
+        background: #f8f9fa;
+        padding: 18px;
+        border-radius: 8px;
+        border-left: 4px solid var(--primary-color);
+        margin-bottom: 20px;
+    }
+    .filter-item label {
+        display: block;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 6px;
+        font-size: 0.95rem;
+    }
+    .round-nav-group {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    /* PREMIER LEAGUE BROADCAST MATCHWEEK VIEW */
+    .epl-matchweek-card {
+        border: 1px solid #e1d8e6;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 26px;
+        background: #fff;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+    }
+    .epl-mw-header {
+        background: linear-gradient(90deg, #37003c 0%, #520659 100%);
+        color: white;
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .epl-mw-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.15rem;
+        font-weight: 700;
+    }
+    .epl-mw-badge {
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        font-size: 0.8rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 6px;
+    }
+    .epl-mw-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 0.88rem;
+        flex-wrap: wrap;
+    }
+    .mw-pill {
+        padding: 2px 9px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+    .derby-pill {
+        background: #dc3545;
+        color: #fff;
+    }
+    .prime-pill {
+        background: rgba(255, 255, 255, 0.2);
+        color: #ffffff;
+    }
+    .epl-day-group {
+        border-top: 1px solid #eee;
+    }
+    .epl-day-banner {
+        padding: 8px 18px;
+        font-size: 0.88rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f4eff7;
+        color: #37003c;
+    }
+    .epl-day-banner.midweek-banner {
+        background: #eef6fa;
+        color: #0b4f6c;
+    }
+    .day-count-tag {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--primary-color);
+        background: #e9d8f4;
+        padding: 2px 9px;
+        border-radius: 10px;
+    }
+    .epl-fixtures-list {
+        display: flex;
+        flex-direction: column;
+    }
+    .epl-fixture-row {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr 270px;
+        align-items: center;
+        gap: 14px;
+        padding: 11px 18px;
+        border-top: 1px solid #f2f2f2;
+        transition: background-color 0.15s ease;
+    }
+    .epl-fixture-row:hover {
+        background-color: #faf7fc;
+    }
+    .epl-row-derby {
+        background-color: #fff8f6;
+        border-left: 4px solid #dc3545;
+    }
+    .epl-row-prime {
+        border-left: 4px solid var(--primary-color);
+    }
+    .epl-team-side {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        color: #222;
+        font-size: 0.96rem;
+    }
+    .home-side {
+        justify-content: flex-end;
+        text-align: right;
+    }
+    .away-side {
+        justify-content: flex-start;
+        text-align: left;
+    }
+    .epl-club-crest {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 26px;
+        border-radius: 5px;
+        font-size: 0.73rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+    }
+    .home-crest {
+        background: var(--primary-color);
+        color: #ffffff;
+    }
+    .away-crest {
+        background: #f3e5f5;
+        color: var(--primary-color);
+        border: 1px solid #e1bee7;
+    }
+    .epl-kickoff-box {
+        background: #f3eef6;
+        border: 1px solid #d7c8e0;
+        color: #37003c;
+        padding: 5px 13px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        min-width: 68px;
+        text-align: center;
+    }
+    .epl-kickoff-box.ko-derby {
+        background: #dc3545;
+        border-color: #dc3545;
+        color: #fff;
+    }
+    .epl-kickoff-box.ko-prime {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        color: #ffffff;
+    }
+    .epl-venue-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: #555;
+    }
+    .venue-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .fixture-tags {
+        display: flex;
+        gap: 5px;
+        flex-shrink: 0;
+    }
+
+    /* 38-ROUND HOME/AWAY SEQUENCE MATRIX */
+    .matrix-section {
+        margin-top: 26px;
+        background: #fff;
+        border: 1px solid #e3dae8;
+        border-radius: 10px;
+        padding: 16px;
+    }
+    .matrix-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .matrix-legend {
+        display: flex;
+        gap: 14px;
+        font-size: 0.82rem;
+        flex-wrap: wrap;
+    }
+    .matrix-scroll-wrap {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .ha-matrix-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.76rem;
+    }
+    .ha-matrix-table th, .ha-matrix-table td {
+        padding: 4px 3px;
+        text-align: center;
+        border: 1px solid #eee;
+    }
+    .ha-matrix-table th {
+        background: #37003c;
+        color: white;
+        font-weight: 700;
+    }
+    .sticky-club-col {
+        position: sticky;
+        left: 0;
+        background: #faf8fc;
+        text-align: left !important;
+        padding: 5px 10px !important;
+        min-width: 145px;
+        z-index: 2;
+        border-right: 2px solid #d5c6de !important;
+    }
+    .ha-matrix-table th.sticky-club-col {
+        background: #37003c;
+        color: #ffffff;
+    }
+    .m-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        font-weight: 800;
+        font-size: 0.72rem;
+        cursor: default;
+    }
+    .m-home {
+        background: #f3e5f5;
+        color: var(--primary-color);
+    }
+    .m-away {
+        background: #f1f5f9;
+        color: #475569;
+    }
+    .m-derby {
+        outline: 2px solid #dc3545;
+        font-weight: 900;
+    }
+    .m-streak-warn {
+        background: #ffe0e3 !important;
+        color: #b00020 !important;
+    }
+
+    @media (max-width: 820px) {
+        .epl-fixture-row {
+            grid-template-columns: 1fr auto 1fr;
+        }
+        .epl-venue-meta {
+            grid-column: 1 / -1;
+            justify-content: center;
+        }
+    }
+
+    .error {
+        color: #dc3545;
+        padding: 15px;
+        background-color: #ffebee;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+    .no-data {
+        text-align: center;
+        padding: 30px;
+        color: #666;
+        font-style: italic;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+</style>
+
+</body>
+</html>
